@@ -1,0 +1,62 @@
+{
+  "activeBoard": "sysarch-main",
+  "envOverride": true,
+  "envKeys": {
+    "activeBoard": "ACTIVE_BOARD_ID",
+    "googleSheetId": "GOOGLE_SHEET_ID",
+    "worksheetName": "GOOGLE_WORKSHEET_NAME_1",
+    "liveSyncChannelId": "LIVE_SYNC_CHANNEL_ID_1",
+    "dueSoonChannelId": "DUE_SOON_CHANNEL_ID_1",
+    "syncPollSeconds": "SYNC_POLL_SECONDS",
+    "dueSoonIntervalHours": "DUE_SOON_INTERVAL_HOURS",
+    "dueSoonDays": "DUE_SOON_DAYS",
+    "ownerIdMap": "OWNER_ID_MAP",
+    "ownerMentionOrder": "OWNER_MENTION_ORDER", 
+    "worksheetName2": "GOOGLE_WORKSHEET_NAME_2",
+    "liveSyncChannelId2": "LIVE_SYNC_CHANNEL_ID_2",
+    "dueSoonChannelId2": "DUE_SOON_CHANNEL_ID_2"
+  },
+  "boards": [
+    {
+      "id": "sysarch-main",
+      "name": "SYSARCH Main Tasks",
+      "todoBoardName": "SYSARCH TO DO LIST",
+      "googleSheetId": "${GOOGLE_SHEET_ID}",
+      "worksheetName": "${GOOGLE_WORKSHEET_NAME_1}",
+      "liveSyncChannelId": "${LIVE_SYNC_CHANNEL_ID_1}",
+      "dueSoonChannelId": "${DUE_SOON_CHANNEL_ID_1}",
+      "syncPollSeconds": "${SYNC_POLL_SECONDS}",
+      "dueSoonIntervalHours": "${DUE_SOON_INTERVAL_HOURS}",
+      "dueSoonDays": "${DUE_SOON_DAYS}",
+      "ownerIdMap": "${OWNER_ID_MAP}",
+      "ownerMentionOrder": "${OWNER_MENTION_ORDER}",
+      "notes": "This board uses .env values directly."
+    }, 
+    {
+      "id": "capstone-main",
+      "name": "CAPSTONE Main Tasks",
+      "todoBoardName": "CAPSTONE TO DO LIST",
+      "googleSheetId": "${GOOGLE_SHEET_ID}",
+      "worksheetName": "${GOOGLE_WORKSHEET_NAME_2}",
+      "liveSyncChannelId": "${LIVE_SYNC_CHANNEL_ID_2}",
+      "dueSoonChannelId": "${DUE_SOON_CHANNEL_ID_2}",
+      "syncPollSeconds": "${SYNC_POLL_SECONDS}",
+      "dueSoonIntervalHours": "${DUE_SOON_INTERVAL_HOURS}",
+      "dueSoonDays": "${DUE_SOON_DAYS}",
+      "ownerIdMap": "${OWNER_ID_MAP}",
+      "ownerMentionOrder": "${OWNER_MENTION_ORDER}",
+      "notes": "This board uses .env values directly."
+    }
+  ],
+  "howToAddNewBoard": {
+    "steps": [
+      "Duplicate one board object inside boards[]",
+      "Set a unique id and name",
+      "Set todoBoardName for that board",
+      "Set googleSheetId and worksheetName",
+      "Set liveSyncChannelId and dueSoonChannelId",
+      "Set ownerIdMap and ownerMentionOrder",
+      "Set activeBoard to the board id you want this bot instance to use"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+.env
+*.pyc
+__pycache__/
+service_account.json
+discord.log
+*.log
+.DS_Store
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
