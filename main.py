@@ -657,9 +657,8 @@ def build_dashboard_text(tasks, board_title: str | None = None):
         return f"Due: {parsed.strftime('%b %d, %Y')}"
 
     lines = [
-        "╔════════════════════════════════════╗",
         f"               {board_title or TODO_BOARD_NAME}",
-        "╚════════════════════════════════════╝",
+        "",
         "Tasks",
     ]
 
@@ -890,25 +889,44 @@ class StatusPickSelect(discord.ui.Select):
             await interaction.followup.send(f"Failed to set status: {exc}", ephemeral=True)
 
 
-class TaskStatusPickView(discord.ui.View):
-    def __init__(self, task_number: int, task_title: str, current_status: str, board_id: str):
-        super().__init__(timeout=60)
+class SetTaskStatusModal(discord.ui.Modal, title="Set Task Status"):
+    status = discord.ui.TextInput(
+        label="Status",
+        placeholder="Not started / In progress / Blocked / Completed",
+        required=True,
+        max_length=30,
+    )
+
+    def __init__(self, task_number: int, board_id: str, current_status: str):
+        super().__init__()
         self._task_number = task_number
         self._board_id = board_id
-        self.add_item(StatusPickSelect(task_number, current_status, board_id))
+        self.status.default = current_status
 
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, row=1)
-    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await defer_interaction(interaction)
-        service, cfg = get_board_service_and_config(self._board_id)
-        tasks = await asyncio.to_thread(service.list_tasks)
-        board_title = cfg.get("todoBoardName") or cfg.get("boardName") or TODO_BOARD_NAME
-        await edit_interaction_message(
-            interaction,
-            content=build_dashboard_text(tasks, board_title=board_title),
-            view=TaskControlView(tasks, self._board_id),
-            embed=None,
-        )
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            await defer_interaction(interaction)
+            service, cfg = get_board_service_and_config(self._board_id)
+            raw_status = str(self.status).strip()
+            normalized_status = parse_status_input(raw_status)
+            if normalized_status is None:
+                await interaction.followup.send(
+                    "Status must be one of: Not started, In progress, Blocked, Completed",
+                    ephemeral=True,
+                )
+                return
+
+            await asyncio.to_thread(service.set_task_status, self._task_number, normalized_status)
+            tasks = await asyncio.to_thread(service.list_tasks)
+            board_title = cfg.get("todoBoardName") or cfg.get("boardName") or TODO_BOARD_NAME
+            await edit_interaction_message(
+                interaction,
+                content=build_dashboard_text(tasks, board_title=board_title),
+                view=TaskControlView(tasks, self._board_id),
+                embed=None,
+            )
+        except Exception as exc:
+            await interaction.followup.send(f"Failed to set status: {exc}", ephemeral=True)
 
 
 class DeleteTaskModal(discord.ui.Modal, title="Delete Task"):
@@ -944,19 +962,6 @@ class TaskControlView(discord.ui.View):
         self._board_id = board_id
         if tasks:
             self.add_item(TaskStatusSelect(tasks[:25], board_id))
-            self.add_item(TaskEditSelect(tasks[:25], board_id))
-
-    @discord.ui.button(label="Add", style=discord.ButtonStyle.success, row=2)
-    async def create_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(CreateTaskModal(self._board_id))
-
-    @discord.ui.button(label="Edit", style=discord.ButtonStyle.primary, row=2)
-    async def edit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Use the task dropdown to choose which task to edit.", ephemeral=True)
-
-    @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger, row=2)
-    async def delete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(DeleteTaskModal(self._board_id))
 
     @discord.ui.button(label="Refresh", style=discord.ButtonStyle.secondary, row=2)
     async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -994,24 +999,20 @@ class TaskStatusSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         try:
-            await defer_interaction(interaction)
             service, _cfg = get_board_service_and_config(self._board_id)
             selected_idx = int(self.values[0])
             tasks = await asyncio.to_thread(service.list_tasks)
             if selected_idx < 1 or selected_idx > len(tasks):
-                await interaction.followup.send("Selected task is out of range.", ephemeral=True)
+                await interaction.response.send_message("Selected task is out of range.", ephemeral=True)
                 return
             chosen = tasks[selected_idx - 1]
             current_status = normalize_status(chosen.status)
-            view = TaskStatusPickView(selected_idx, chosen.title, current_status, self._board_id)
-            await edit_interaction_message(
-                interaction,
-                content=f"{status_icon(current_status)} **Task {selected_idx}: {chosen.title}**\n👤 {chosen.owner or 'Unassigned'}\nSelect new status below:",
-                view=view,
-                embed=None,
-            )
+            await interaction.response.send_modal(SetTaskStatusModal(selected_idx, self._board_id, current_status))
         except Exception as exc:
-            await interaction.followup.send(f"Failed to open status picker: {exc}", ephemeral=True)
+            if interaction.response.is_done():
+                await interaction.followup.send(f"Failed to open status modal: {exc}", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"Failed to open status modal: {exc}", ephemeral=True)
 
 
 class TaskEditSelect(discord.ui.Select):

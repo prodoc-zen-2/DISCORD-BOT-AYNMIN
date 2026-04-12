@@ -20,7 +20,7 @@
     {
       "id": "sysarch-main",
       "name": "SYSARCH Main Tasks",
-      "todoBoardName": "SYSARCH TO DO LIST",
+      "todoBoardName": "3RD YEAR TO DO LIST",
       "googleSheetId": "${GOOGLE_SHEET_ID}",
       "worksheetName": "${GOOGLE_WORKSHEET_NAME_1}",
       "liveSyncChannelId": "${LIVE_SYNC_CHANNEL_ID_1}",
