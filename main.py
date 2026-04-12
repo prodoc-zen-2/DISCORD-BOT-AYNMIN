@@ -647,6 +647,22 @@ def status_icon(status: str):
     }.get(normalized, "⬜")
 
 
+def compact_single_line(value: str, max_len: int = 220) -> str:
+    text = " ".join((value or "").split())
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1].rstrip() + "…"
+
+
+def format_collapsible_notes(notes: str) -> str | None:
+    cleaned = compact_single_line(notes)
+    if not cleaned:
+        return None
+    # Prevent accidental spoiler termination if users type || in notes.
+    cleaned = cleaned.replace("||", "| |")
+    return f"||{cleaned}||"
+
+
 def build_dashboard_text(tasks, board_title: str | None = None):
     ordered = list(tasks)
 
@@ -666,6 +682,11 @@ def build_dashboard_text(tasks, board_title: str | None = None):
         for idx, task in enumerate(ordered[:25], start=1):
             lines.append(f"{idx}. {status_icon(task.status)} {task.title}")
             lines.append(f"   Owner: {task.owner or 'Unassigned'} | Status: {normalize_status(task.status)} | 📅 {due_text(task)}")
+            if task.deliverable:
+                lines.append(f"   📎 Deliverable: {compact_single_line(task.deliverable)}")
+            note_preview = format_collapsible_notes(task.notes)
+            if note_preview:
+                lines.append(f"   📝 Notes: {note_preview}")
             lines.append("")
     else:
         lines.append("No tasks found in Google Sheets.")
@@ -721,26 +742,83 @@ def build_tasks_embed(tasks, title: str = "Task Control Center"):
 
 
 async def resolve_owner_mention(owner_value: str, guild: discord.Guild | None):
+    def lookup_key(value: str) -> str:
+        return "".join(ch for ch in value.lower().strip() if ch.isalnum())
+
     owner = (owner_value or "").strip()
     if not owner:
         return None
 
+    owner = owner.replace("<@!", "<@").strip()
     if owner.startswith("<@") and owner.endswith(">"):
         return owner
-    if owner.isdigit():
-        return f"<@{owner}>"
 
-    mapped_id = OWNER_ID_MAP.get(owner.lower())
+    normalized_owner = owner.lstrip("@").strip()
+    if normalized_owner.isdigit():
+        if guild:
+            try:
+                member = await guild.fetch_member(int(normalized_owner))
+                return member.mention
+            except Exception:
+                pass
+        return f"<@{normalized_owner}>"
+
+    mapped_id = OWNER_ID_MAP.get(normalized_owner.lower())
     if mapped_id:
+        if guild:
+            try:
+                member = await guild.fetch_member(int(mapped_id))
+                return member.mention
+            except Exception:
+                pass
         return f"<@{mapped_id}>"
 
     if guild:
-        normalized = owner.lower()
+        normalized = normalized_owner.lower()
+        normalized_key = lookup_key(normalized_owner)
         for member in guild.members:
-            if member.display_name.lower() == normalized or member.name.lower() == normalized:
+            if (
+                member.display_name.lower() == normalized
+                or member.name.lower() == normalized
+                or (member.global_name and member.global_name.lower() == normalized)
+                or lookup_key(member.display_name) == normalized_key
+                or lookup_key(member.name) == normalized_key
+                or (member.global_name and lookup_key(member.global_name) == normalized_key)
+            ):
                 return member.mention
 
-    return f"@{owner}"
+        # Fallback lookup for members not currently cached.
+        try:
+            queried = await guild.query_members(query=normalized_owner, limit=5)
+            for member in queried:
+                if (
+                    member.display_name.lower() == normalized
+                    or member.name.lower() == normalized
+                    or (member.global_name and member.global_name.lower() == normalized)
+                    or lookup_key(member.display_name) == normalized_key
+                    or lookup_key(member.name) == normalized_key
+                    or (member.global_name and lookup_key(member.global_name) == normalized_key)
+                ):
+                    return member.mention
+        except Exception:
+            pass
+
+        # Last-resort exhaustive fetch for large guilds where cache/query misses.
+        try:
+            async for member in guild.fetch_members(limit=None):
+                if (
+                    member.display_name.lower() == normalized
+                    or member.name.lower() == normalized
+                    or (member.global_name and member.global_name.lower() == normalized)
+                    or lookup_key(member.display_name) == normalized_key
+                    or lookup_key(member.name) == normalized_key
+                    or (member.global_name and lookup_key(member.global_name) == normalized_key)
+                ):
+                    return member.mention
+        except Exception:
+            pass
+
+    return f"@{normalized_owner}"
 
 
 class CreateTaskModal(discord.ui.Modal, title="Create Task"):
@@ -1180,14 +1258,20 @@ async def send_due_soon_reminder(
         lines.append("")
         counter += 1
 
+    header = f"Task Alert Board - {board_name}" if board_name else "Task Alert Board"
+    body = "\n".join(lines).strip() or "No due-soon tasks right now."
+    footer = f"Includes overdue + due soon tasks. Auto reminder every {footer_hours} hour(s)"
     embed = discord.Embed(
-        title=f"Task Alert Board - {board_name}" if board_name else "Task Alert Board",
-        description="\n".join(lines).strip(),
+        title=header,
+        description=body,
         color=discord.Color.red(),
         timestamp=datetime.now(UTC),
     )
-    embed.set_footer(text=f"Includes overdue + due soon tasks. Auto reminder every {footer_hours} hour(s)")
-    await channel.send(embed=embed)
+    embed.set_footer(text=footer)
+    await channel.send(
+        embed=embed,
+        allowed_mentions=discord.AllowedMentions(users=True, roles=False, everyone=False),
+    )
     return True
 
 
@@ -1279,6 +1363,7 @@ async def commands_slash(interaction: discord.Interaction):
         "/commands - show this command list",
         "/panel - post interactive task panel",
         "/tasks - show current task board text",
+        "/note - show full note and links for one task",
         "/setstatus - set task status by task number",
         "/remindnow - send due-soon reminder now",
         "/testannounce - send test announcement to due-soon channel",
@@ -1286,7 +1371,7 @@ async def commands_slash(interaction: discord.Interaction):
         "/useboard - switch active board",
         "",
         "Prefix commands (still supported):",
-        "!panel, !tasks, !create, !edit, !delete, !setstatus, !remindnow, !testannounce, !boards, !useboard",
+        "!panel, !tasks, !note, !create, !edit, !delete, !setstatus, !remindnow, !testannounce, !boards, !useboard",
     ]
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
@@ -1339,6 +1424,29 @@ async def tasks_slash(interaction: discord.Interaction):
         await interaction.response.send_message(content=build_dashboard_text(tasks))
     except Exception as exc:
         await interaction.response.send_message(f"Failed to fetch tasks: {exc}", ephemeral=True)
+
+
+@bot.tree.command(name="note", description="Show full notes/details for a task number")
+@discord.app_commands.describe(task_number="Task number from the panel")
+async def note_slash(interaction: discord.Interaction, task_number: int):
+    try:
+        tasks = await asyncio.to_thread(todo_service.list_tasks)
+        if task_number < 1 or task_number > len(tasks):
+            await interaction.response.send_message("Task number is out of range.", ephemeral=True)
+            return
+
+        task = tasks[task_number - 1]
+        lines = [
+            f"Task {task_number}: **{task.title}**",
+            f"Owner: {task.owner or 'Unassigned'}",
+            f"Status: {normalize_status(task.status)}",
+            f"Deadline: {format_deadline_for_ui(task.deadline)}",
+            f"Deliverable: {task.deliverable or 'None'}",
+            f"Notes: {task.notes or 'None'}",
+        ]
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+    except Exception as exc:
+        await interaction.response.send_message(f"Failed to fetch note: {exc}", ephemeral=True)
 
 
 @bot.tree.command(name="setstatus", description="Set a task status by task number")
@@ -1446,6 +1554,28 @@ async def tasks_command(ctx):
         await ctx.send(content=build_dashboard_text(tasks))
     except Exception as exc:
         await ctx.send(f"Failed to fetch tasks: {exc}")
+
+
+@bot.command(name="note")
+async def note_command(ctx, task_number: int):
+    try:
+        tasks = await asyncio.to_thread(todo_service.list_tasks)
+        if task_number < 1 or task_number > len(tasks):
+            await ctx.send("Task number is out of range.")
+            return
+
+        task = tasks[task_number - 1]
+        lines = [
+            f"Task {task_number}: **{task.title}**",
+            f"Owner: {task.owner or 'Unassigned'}",
+            f"Status: {normalize_status(task.status)}",
+            f"Deadline: {format_deadline_for_ui(task.deadline)}",
+            f"Deliverable: {task.deliverable or 'None'}",
+            f"Notes: {task.notes or 'None'}",
+        ]
+        await ctx.send("\n".join(lines))
+    except Exception as exc:
+        await ctx.send(f"Failed to fetch note: {exc}")
 
 
 @bot.command(name="create")
@@ -1617,7 +1747,7 @@ async def on_command_error(ctx, error):
         return
     if isinstance(error, commands.MissingRequiredArgument):
         await ctx.send(
-            "Missing argument. Commands: !panel, !tasks, !create, !edit, !delete, !setstatus, !remindnow, !testannounce, !boards, !useboard"
+            "Missing argument. Commands: !panel, !tasks, !note, !create, !edit, !delete, !setstatus, !remindnow, !testannounce, !boards, !useboard"
         )
         return
     await ctx.send(f"Command error: {error}")
