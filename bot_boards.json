@@ -46,6 +46,21 @@
       "ownerIdMap": "${OWNER_ID_MAP}",
       "ownerMentionOrder": "${OWNER_MENTION_ORDER}",
       "notes": "This board uses .env values directly."
+    },
+    {
+      "id": "todo-main-2",
+      "name": "JASMIN AND JC Main Tasks",
+      "todoBoardName": "JASMIN AND JC Main Tasks",
+      "googleSheetId": "${GOOGLE_SHEET_ID}",
+      "worksheetName": "${GOOGLE_WORKSHEET_NAME_3}",
+      "liveSyncChannelId": "${LIVE_SYNC_CHANNEL_ID_3}",
+      "dueSoonChannelId": "${DUE_SOON_CHANNEL_ID_2}",
+      "syncPollSeconds": "${SYNC_POLL_SECONDS}",
+      "dueSoonIntervalHours": "${DUE_SOON_INTERVAL_HOURS}",
+      "dueSoonDays": "${DUE_SOON_DAYS}",
+      "ownerIdMap": "${OWNER_ID_MAP}",
+      "ownerMentionOrder": "${OWNER_MENTION_ORDER}",
+      "notes": "This board uses .env values directly."
     }
   ],
   "howToAddNewBoard": {
